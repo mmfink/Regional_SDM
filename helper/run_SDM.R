@@ -20,8 +20,9 @@ run_SDM <- function(
   nm_presFile,
   nm_db_file,
   loc_model,
-  nm_bkg,
-  nm_huc12 = nm_huc12,
+  loc_envVars,
+  nm_bkgPts,
+  nm_HUC_file,
   nm_refBoundaries,
   nm_aquaArea = NULL,
   project_overview = "",
@@ -73,8 +74,9 @@ run_SDM <- function(
       nm_presFile = nm_presFile,
       nm_db_file = nm_db_file,
       loc_model = loc_model,
-      nm_bkg = nm_bkg,
-      nm_huc12 = nm_huc12,
+      loc_envVars = loc_envVars,
+      nm_bkgPts = nm_bkgPts,
+      nm_HUC_file = nm_HUC_file,
       nm_refBoundaries = nm_refBoundaries,
       nm_aquaArea = nm_aquaArea,
       project_overview = project_overview,
@@ -85,6 +87,7 @@ run_SDM <- function(
       baseName = baseName,
       add_vars = add_vars,
       remove_vars = remove_vars,
+      baseName = baseName,
       #rubric_default = rubric_default,
       project_blurb = project_blurb)
   }
@@ -111,16 +114,27 @@ run_SDM <- function(
   save(fn_args, file = paste0(loc_model, "/" , model_species, "/runSDM_paths.Rdata"))
   
   # assign objects
-  for(i in 1:length(fn_args)) assign(names(fn_args)[i], fn_args[[i]])
+  for(i in 1:length(fn_args)) assign(names(fn_args)[i], fn_args[[i]], envir = .GlobalEnv)
+  fn_args <<- fn_args #assign the list up to the global environment
   
   # check for missing packages
-  req.pack <- c("RSQLite","rgdal","sp","rgeos","raster","maptools","ROCR","vcd","abind","git2r","sf",
-                "foreign","randomForest","DBI","knitr","RColorBrewer","rasterVis","xtable")
+  req.pack <- c("RSQLite","rgdal","sp","rgeos","raster","maptools",
+                "ROCR","vcd","abind","foreign","randomForest",
+                "snow", "DBI", "knitr","RColorBrewer","rasterVis","xtable",
+                "git2r","spsurvey", "here","sf","dplyr","stringi","tmap","tmaptools","OpenStreetMap",
+                "snowfall", "smoothr", "tables","rJava", "tinytex", "odbc")
   miss.pack <- req.pack[!req.pack %in% names(installed.packages()[,1])]
   if (length(miss.pack) > 0) {
     stop("Need to install the following package(s) before running this function: ", paste(miss.pack, collapse = ", "), ". Run script helper/pkg_check.R to download/update.")
   }
-  
+  # check to see if GDAL and MiKTeX are installed ... by checking to see if they are in users PATH
+  if(!grepl("OSGeo4W64", Sys.getenv("PATH"))){
+    stop("Need to add GDAL to your PATH environment, see https://github.com/HeritageNetwork/Regional_SDM/wiki/User-Customizations ")
+  }
+  if(!grepl("MiKTeX", Sys.getenv("PATH"))){
+    stop("Need to add MiKTeX to your PATH environment, see https://github.com/HeritageNetwork/Regional_SDM/wiki/User-Customizations ")
+  }
+    
   # steps to run
   all_steps <- c("1","2","3","4","4b","4c","5")
   step_names <- c("1_pointsInPolys_cleanBkgPts.R",
@@ -135,20 +149,21 @@ run_SDM <- function(
   
   if (!begin_step %in% c("1","2","3")) {
     if (is.null(model_rdata)) stop("Must provide .Rdata file name if starting after step 3.")
-    load(paste0(loc_model, "/", model_species, "/outputs/rdata/", model_rdata, ".Rdata"))
+    load(paste0(loc_model, "/", model_species, "/outputs/rdata/", model_rdata))
   }
   
   # run scripts
   for (scrpt in run_steps) {
     message(paste0("Running script ", scrpt , "..."))
+    
     # reload variables
-    for(i in 1:length(fn_args)) assign(names(fn_args)[i], fn_args[[i]])
-    
+    for(i in 1:length(fn_args)) assign(names(fn_args)[i], fn_args[[i]], envir = .GlobalEnv)
     # run script
-    source(paste(loc_scripts, scrpt, sep = "/"), local = TRUE)
-    
+    source(paste(loc_scripts, scrpt, sep = "/"), local = FALSE)
+
     # clean up everything but loop objects
-    rm(list=ls()[!ls() %in% c("scrpt","run_steps","prompt","modelrun_meta_data","fn_args")])
+    rm(list=ls(envir = .GlobalEnv)
+       [!ls(envir = .GlobalEnv) %in% c("scrpt","run_steps","prompt","modelrun_meta_data","fn_args","sv","sppVec","run_SDM","loc_scripts")], envir = .GlobalEnv)
     
     message(paste0("Completed script ", scrpt , "..."))
     

@@ -101,8 +101,10 @@ cat("Groups = ", group$JackknType,";", sep = "")
 \smallskip
 \begin{center}
 <<tableOne, results="asis", echo = FALSE>>=
-	summ.table <- data.frame(Name=c("Presence reaches","Reach groups","Background reaches"), #note how many reach groups (replace poly and EOs, keep EOs/observations?, # length( unique(df.in2$huc12))))
-                         Number=c(nrow(subset(df.full, pres == 1)),length(unique(df.in2$stratum)),nrow(subset(df.full, pres == 0))
+	summ.table <- data.frame(Name=c("Presence points","Groups","Background points"),
+                         Number=c(nrow(subset(df.full, pres == 1)),
+                         numEOs,
+                         nrow(subset(df.full, pres == 0))
                          ))
   print(xtable(summ.table),
              floating = FALSE, include.rownames=FALSE)
@@ -160,7 +162,7 @@ if (exists("n.var")) {
 cat(txt)
 @
 The final model was built using \Sexpr{rf.full$ntree} trees, all presence 
-and background reaches, with an mtry of \Sexpr{rf.full$mtry}, and \Sexpr{length(EnvVars$impVal)} environmental variables.
+and background points, with an mtry of \Sexpr{rf.full$mtry}, and \Sexpr{length(EnvVars$impVal)} environmental variables.
 \small
 \begin{center}
 <<ROCplot, fig.width=2.9, fig.height=1.6, include=FALSE, echo=FALSE>>=
@@ -306,6 +308,7 @@ for (plotpi in 1:length(pPlots)){
 \includegraphics{figure/pPlotFig-1.pdf} \\   %place them, then line break
 \small
 Figure 3. Partial dependence plots for the \Sexpr{as.character(length(pPlots))} environmental variables with the most influence on the model. Each plot shows the effect of the variable on the probability of appropriate habitat with the effects of the other variables removed {\protect\NoHyper\cite{liaw2002}\protect\endNoHyper}. The x-axis covers the range of values for the variable assessed; the y-axis represents the effect between the variable and model response. Peaks in the black line indicate where this variable had the strongest influence on predicting appropriate habitat. Decreasing lines from left to right show a negative relationship overall; increasing lines, positive. The distribution of each category (thin red = Background points, thick blue = Presence points) is depicted at the top margin. See Appendix 1 for variable descriptions.
+\normalsize
 
 \normalsize
 \medskip
@@ -336,7 +339,6 @@ Table 3. Thresholds {\protect\NoHyper\cite{LiuEtAl2005, LiuEtAl2015}\protect\end
 All SDMs are sensitive to data inputs and methodological choices. Table 4 presents scoring of modeling factors based on the model evaluation rubric presented in Sofaer et al. 2019 {\protect\NoHyper\cite{SofaerEtAl2019}\protect\endNoHyper}. \Sexpr{as.character(project_blurb)}
 \\
 \smallskip
-
 \pagebreak
 
 
@@ -349,22 +351,65 @@ All SDMs are sensitive to data inputs and methodological choices. Table 4 presen
 \hline
 Category & Metric & Score & Notes 
 \\ \hline
-\multirow{3}{*}{Species Data} & Presence data quality & \Sexpr{as.character(sdm.modeluse$spdata_dataqual)} & \Sexpr{as.character(sdm.modeluse$spdata_dataqualNotes)} 
-\\ \cline{2-4} & Absence/Background Data & \Sexpr{as.character(sdm.modeluse$spdata_abs)} & \Sexpr{as.character(sdm.modeluse$spdata_absNotes)} 
-\\ \cline{2-4} & Evaluation Data & \Sexpr{as.character(sdm.modeluse$spdata_eval)} & \Sexpr{as.character(sdm.modeluse$spdata_evalNotes)} 
+\multirow{3}{*}{Species Data} 
+  & Presence data quality 
+  & \Sexpr{as.character(sdm.modeluse$spdata_dataqual)} 
+  & \Sexpr{as.character(sdm.modeluse$spdata_dataqualNotes)} 
+\\ \cline{2-4}
+  & Absence/Background Data 
+  & \Sexpr{as.character(sdm.modeluse$spdata_abs)} 
+  & \Sexpr{as.character(sdm.modeluse$spdata_absNotes)} 
+\\ \cline{2-4}
+  & Evaluation Data 
+  & \Sexpr{as.character(sdm.modeluse$spdata_eval)} 
+  & \Sexpr{as.character(sdm.modeluse$spdata_evalNotes)} 
 \\ \hline
-\multirow{2}{*}{Environmental Predictors} & Ecological and predictive relevance & \Sexpr{as.character(sdm.modeluse$envvar_relevance)} & \Sexpr{as.character(sdm.modeluse$envvar_relevanceNotes)} 
-\\ \cline{2-4} & Spatial and temporal alignment & \Sexpr{as.character(sdm.modeluse$envvar_align)} & \Sexpr{as.character(sdm.modeluse$envvar_alignNotes)} \\ \hline
-\multirow{5}{*}{Modeling Process} & Algorithm choice & \Sexpr{as.character(sdm.modeluse$process_algo)} & \Sexpr{as.character(sdm.modeluse$process_algoNotes)} 
-\\ \cline{2-4} & Sensitivity & \Sexpr{as.character(sdm.modeluse$process_sens)} & \Sexpr{as.character(sdm.modeluse$process_sensNotes)} 
-\\ \cline{2-4} & Statistical rigor & \Sexpr{as.character(sdm.modeluse$process_rigor)} & \Sexpr{as.character(sdm.modeluse$process_rigorNotes)} 
-\\ \cline{2-4} & Performance & \Sexpr{as.character(sdm.modeluse$process_perform)} & \Sexpr{as.character(sdm.modeluse$process_performNotes)} 
-\\ \cline{2-4} & Model review & \Sexpr{as.character(sdm.modeluse$process_review)} &  \Sexpr{as.character(sdm.modeluse$process_reviewNotes)}
+\multirow{2}{2.8cm}{Environmental Predictors} 
+  & Ecological and predictive relevance 
+  & \Sexpr{as.character(sdm.modeluse$envvar_relevance)} 
+  & \Sexpr{as.character(sdm.modeluse$envvar_relevanceNotes)} 
+\\ \cline{2-4}
+  & Spatial and temporal alignment 
+  & \Sexpr{as.character(sdm.modeluse$envvar_align)} 
+  & \Sexpr{as.character(sdm.modeluse$envvar_alignNotes)} 
 \\ \hline
-\multirow{3}{*}{Model Products} & Mapped products & \Sexpr{as.character(sdm.modeluse$products_mapped)} & \Sexpr{as.character(sdm.modeluse$products_mappedNotes)} 
-\\ \cline{2-4} & Interpretation support products & \Sexpr{as.character(sdm.modeluse$products_support)} & \Sexpr{as.character(sdm.modeluse$products_supportNotes)} 
-\\ \cline{2-4} & Reproducibility & \Sexpr{as.character(sdm.modeluse$products_repo)} & \Sexpr{as.character(sdm.modeluse$products_repoNotes)} 
-\\ \hline & Iterative & \Sexpr{as.character(sdm.modeluse$interative)} & \Sexpr{as.character(sdm.modeluse$interativeNotes)} 
+\multirow{5}{*}{Modeling Process} 
+  & Algorithm choice 
+  & \Sexpr{as.character(sdm.modeluse$process_algo)} 
+  & \Sexpr{as.character(sdm.modeluse$process_algoNotes)} 
+\\ \cline{2-4}
+  & Sensitivity 
+  & \Sexpr{as.character(sdm.modeluse$process_sens)} 
+  & \Sexpr{as.character(sdm.modeluse$process_sensNotes)} 
+\\ \cline{2-4}
+  & Statistical rigor 
+  & \Sexpr{as.character(sdm.modeluse$process_rigor)} 
+  & \Sexpr{as.character(sdm.modeluse$process_rigorNotes)} 
+\\ \cline{2-4}
+  & Performance 
+  & \Sexpr{as.character(sdm.modeluse$process_perform)} 
+  & \Sexpr{as.character(sdm.modeluse$process_performNotes)} 
+\\ \cline{2-4}
+  & Model review 
+  & \Sexpr{as.character(sdm.modeluse$process_review)} 
+  & \Sexpr{as.character(sdm.modeluse$process_reviewNotes)}
+\\ \hline
+\multirow{3}{*}{Model Products} 
+  & Mapped products 
+  & \Sexpr{as.character(sdm.modeluse$products_mapped)} 
+  & \Sexpr{as.character(sdm.modeluse$products_mappedNotes)} 
+\\ \cline{2-4}
+  & Interpretation support products 
+  & \Sexpr{as.character(sdm.modeluse$products_support)} 
+  & \Sexpr{as.character(sdm.modeluse$products_supportNotes)} 
+\\ \cline{2-4}
+  & Reproducibility 
+  & \Sexpr{as.character(sdm.modeluse$products_repo)} 
+  & \Sexpr{as.character(sdm.modeluse$products_repoNotes)} 
+\\ \hline
+  & Iterative 
+  & \Sexpr{as.character(sdm.modeluse$interative)} 
+  & \Sexpr{as.character(sdm.modeluse$interativeNotes)} 
 \\ \hline                      
 \end{tabular}
 \end{table}
@@ -386,9 +431,6 @@ if(nrow(sdm.customComments.subset) > 0){
 
 nclr <- 5
 clrs <- brewer.pal('Blues',n=nclr)
-#class <- classIntervals(plotvar, nclr, style="equal", dataPrecision = 2) ## not in Tim's version
-#colcode <- findColours(class, clrs) ## not in Tim's version
-#results_shape$colcode <- colcode ## not in Tim's version
 
 # figure out size of study area, expand if less than 889km across,
 #  which is 1;5,000,000 when figure is 7 inches wide (which it is here)

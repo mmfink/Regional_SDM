@@ -23,6 +23,11 @@ library(tmaptools)
 library(OpenStreetMap)
 library(rmapshaper)
 
+library(tmap)
+library(tmaptools)
+library(OpenStreetMap)
+
+
 ### find and load model data ----
 ## three lines need your attention. The one directly below (loc_scripts),
 ## about line 35 where you choose which Rdata file to use,
@@ -33,6 +38,9 @@ dir.create(paste0(model_species,"/outputs/metadata"), recursive = T, showWarning
 setwd(paste0(model_species,"/outputs"))
 load(paste0("rdata/", modelrun_meta_data$model_run_name,".Rdata"))
 
+# get background poly data for the map (study area, reference boundaries)
+studyAreaExtent <- st_read(here("_data","species",model_species,"inputs","model_input",paste0(model_run_name, "_studyArea.gpkg")), quiet = T)
+referenceBoundaries <- st_read(nm_refBoundaries, quiet = T) # name of state boundaries file
 # get reach data for the map
 results_shape <- st_read(paste0("model_predictions/", modelrun_meta_data$model_run_name, "_results.shp"), quiet = T) # shapefile results for mapping
 
@@ -83,7 +91,7 @@ if(nrow(sdm.customComments) > 1) {
 }
 
 ## Get threshold information ----
-SQLquery <- paste("Select ElemCode, dateTime, cutCode, cutValue, capturedEOs, capturedPolys, capturedPts ", 
+SQLquery <- paste("Select ElemCode, dateTime, cutCode, cutValue, capturedEOs, capturedPts ", 
                   "FROM tblModelResultsCutoffs ", 
                   "WHERE model_run_name ='", model_run_name, "'; ", sep="")
 sdm.thresholds <- dbGetQuery(db, statement = SQLquery)
@@ -99,11 +107,13 @@ sdm.thresh.info <- dbGetQuery(db, statement = SQLquery)
 sdm.thresh.merge <- merge(sdm.thresholds, sdm.thresh.info)
 #sort it
 sdm.thresh.merge <- sdm.thresh.merge[order(sdm.thresh.merge$sortOrder),]
-sdm.thresh.table <- sdm.thresh.merge[,c("cutFullName", "cutValue", "capturedEOs", "capturedPts", "cutDescription")]
-names(sdm.thresh.table) <- c("Threshold", "Value", "Groups", "Pct","Description")
-sdm.thresh.table$Description <- gsub("points", "reaches", sdm.thresh.table$Description, fixed=TRUE) # hack to change points -> reaches
-sdm.thresh.table$Groups <- paste(round(sdm.thresh.table$Groups/numEOs*100, 1), "(",sdm.thresh.table$Groups, ")", sep="")
-#sdm.thresh.table$Polys <- paste(round(sdm.thresh.table$Polys/numPys*100, 1),  "(",sdm.thresh.table$Polys, ")", sep="")
+sdm.thresh.table <- sdm.thresh.merge[,c("cutFullName", "cutValue",
+  "capturedEOs", "capturedPts", "cutDescription")]
+names(sdm.thresh.table) <- c("Threshold", "Value", "Groups","Pts","Description")
+sdm.thresh.table$Groups <- paste(round(sdm.thresh.table$Groups/numEOs*100, 1),
+                                     "(",sdm.thresh.table$Groups, ")", sep="")
+# sdm.thresh.table$Polys <- paste(round(sdm.thresh.table$Polys/numPys*100, 1),
+#                               "(",sdm.thresh.table$Polys, ")", sep="")
 numPts <- nrow(subset(df.full, pres == 1))
 sdm.thresh.table$Pct <- paste(round(sdm.thresh.table$Pct/numPts*100, 1),  sep="")
 

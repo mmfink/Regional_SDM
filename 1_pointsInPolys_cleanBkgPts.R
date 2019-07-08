@@ -33,9 +33,10 @@ setwd(paste0(loc_model,"/",model_species,"/inputs"))
 # load data, QC ----
 presReaches <- read.csv(nm_presFile)
 
-shpColNms <- names(presReaches)
-desiredCols <- c("UID", "GROUP_ID", "SPECIES_CD", "COMID", "OBSDATE") # , "SNAME", "SCOMNAME", 
-
+#check for proper column names. If no error from next code block, then good to go
+#presPolys$RA <- presPolys$SFRACalc
+shpColNms <- names(presPolys)
+desiredCols <- c("UID", "GROUP_ID", "SPECIES_CD", "RA", "OBSDATE")
 # check if all required names are in file
 if("FALSE" %in% c(desiredCols %in% shpColNms)) {
   stop(paste0("Column(s) are missing or incorrectly named: ", paste(desiredCols[!desiredCols %in% shpColNms], collapse = ", ")))
@@ -44,8 +45,8 @@ if("FALSE" %in% c(desiredCols %in% shpColNms)) {
 }
 
 # check if all columns have complete data
-if(any(is.na(presReaches[c("UID", "GROUP_ID", "SPECIES_CD", "COMID")]))) {   # "SNAME", "SCOMNAME", 
-  stop("The columns 'UID', 'GROUP_ID', 'SPECIES_CD', and 'COMID' cannot have NA values.")
+if(any(is.na(presPolys[,c("UID", "GROUP_ID", "SPECIES_CD", "RA")]))) {
+  stop("The columns 'UID','GROUP_ID','SPECIES_CD', and 'RA' (SFRACalc) cannot have NA values.")
 }
 
 # check if file already exists; if it does, stop and print error
@@ -164,14 +165,150 @@ SQLQuery <- paste0("SELECT proj4string p FROM lkpCRS WHERE table_name = '", nm_b
 proj4 <- dbGetQuery(dbEV, SQLQuery)$p
 shapef <- st_sf(shapef[c("comid", "huc12")], geometry = st_as_sfc(shapef$wkt), crs = proj4)
 
+
+#EObyRA <- unique(shp_expl[,c("expl_id", "group_id","ra")])
+shp_expl$minSamps[shp_expl$ra == "very high"] <- 5
+shp_expl$minSamps[shp_expl$ra == "high"] <- 4
+shp_expl$minSamps[shp_expl$ra == "medium"] <- 3
+shp_expl$minSamps[shp_expl$ra == "low"] <- 2
+shp_expl$minSamps[shp_expl$ra == "very low"] <- 1
+
+shp_expl$finalSampNum <- ifelse(shp_expl$PolySampNum < shp_expl$minSamps, 
+                                shp_expl$minSamps, 
+                                shp_expl$PolySampNum)
+
+ranPts <- st_sample(shp_expl, size = shp_expl$finalSampNum * 2)
+ranPts.sf <- st_sf(ranPts)
+names(ranPts.sf) <- "geometry"
+st_geometry(ranPts.sf) <- "geometry"
+
+ranPts.joined <- st_join(ranPts.sf, shp_expl)
+
+# check for polys that didn't get any points
+polysWithNoPoints <- shp_expl[!shp_expl$expl_id %in% ranPts.joined$expl_id,]
+if(nrow(polysWithNoPoints) > 0){
+  stop("One or more polygons didn't get any points placed in them.")
+############### Aquatics ##################
 # find presence and presence-adjacent reaches by intersection
-bkgd.int <- st_intersects(st_zm(shapef), st_zm(pres.geom) , sparse = F)
-bkgd.geom <- shapef[!apply(bkgd.int, 1, FUN = any),]
-if (length(bkgd.geom$geometry) > 3000) { 
-  bkgd.geom <- bkgd.geom[sort(sample(as.numeric(row.names(bkgd.geom)), size = 3000, replace = F)),]
+#bkgd.int <- st_intersects(st_zm(shapef), st_zm(pres.geom) , sparse = F)
+#bkgd.geom <- shapef[!apply(bkgd.int, 1, FUN = any),]
+#if (length(bkgd.geom$geometry) > 3000) { 
+#  bkgd.geom <- bkgd.geom[sort(sample(as.numeric(row.names(bkgd.geom)), size = 3000, replace = F)),]
 }
 
 # write species reach data
-st_write(pres.geom,paste("presence/", baseName,"_prepped.shp",sep=""))
+#st_write(pres.geom,paste("presence/", baseName,"_prepped.shp",sep=""))
 # wtite background reach data
-st_write(bkgd.geom, paste("model_input/", baseName,"_bkgd_clean.shp",sep=""))
+#st_write(bkgd.geom, paste("model_input/", baseName,"_bkgd_clean.shp",sep=""))
+############### Aquatics ##################
+#  remove extras using straight table work
+
+# this randomly assigns digits to each point by group (stratum) then next row only takes 
+# members in group that are less than target number of points
+rndid <- with(ranPts.joined, ave(expl_id, stratum, FUN=function(x) {sample.int(length(x))}))
+ranPts.joined2 <- ranPts.joined[rndid <= ranPts.joined$finalSampNum,]
+
+# get actual finalSampNum
+#ranPts.joined2 <- ranPts.joined[0,]
+# #### this is slow! ####
+# for (ex in 1:length(shp_expl$geometry)) {
+#   s1 <- shp_expl[ex,]
+#   samps <- row.names(ranPts.joined[ranPts.joined$expl_id==s1$expl_id,])
+#   if (length(samps) > s1$finalSampNum) samps <- sample(samps, size = s1$finalSampNum) # samples to remove
+#   ranPts.joined2 <- rbind(ranPts.joined2, ranPts.joined[samps,])
+# }
+ranPts.joined <- ranPts.joined2
+#rm(ex, s1, samps, ranPts.joined2)
+rm(rndid, ranPts.joined2)
+
+
+#check for cases where sample smaller than requested
+# how many points actually generated?
+ptCount <- table(ranPts.joined$expl_id)
+targCount <- shp_expl[order(shp_expl$expl_id),"finalSampNum"]
+overUnderSampled <- ptCount - targCount$finalSampNum
+
+#positive vals are oversamples, negative vals are undersamples
+print(table(overUnderSampled))
+# If you get large negative values then there are many undersamples and 
+# exploration might be worthwhile
+
+names(ranPts.joined) <- tolower(names(ranPts.joined))
+
+colsToKeep <- c("stratum", tolower(desiredCols))
+ranPts.joined <- ranPts.joined[,colsToKeep]
+
+# name of random points output shapefile
+nm.RanPtFile <- paste(loc_model, model_species,"inputs/presence",paste(baseName, "_RanPts.shp", sep = ""), sep = "/")
+# write it out
+st_write(ranPts.joined, nm.RanPtFile, driver="ESRI Shapefile", delete_layer = TRUE)
+
+###
+### remove Coincident Background points ----
+###
+
+# get range info from the DB (as a list of HUCs)
+db <- dbConnect(SQLite(),dbname=nm_db_file)
+SQLquery <- paste0("SELECT huc10_id from lkpRange
+                   inner join lkpSpecies on lkpRange.EGT_ID = lkpSpecies.EGT_ID
+                   where lkpSpecies.sp_code = '", model_species, "';")
+hucList <- dbGetQuery(db, statement = SQLquery)$huc10_id
+dbDisconnect(db)
+rm(db)
+
+op <- options()
+options(useFancyQuotes = FALSE) #need straight quotes for query
+# get the background data from the DB
+db <- dbConnect(SQLite(), nm_bkgPts[1])
+qry <- paste0("SELECT * from ", nm_bkgPts[2], " where substr(huc12,1,10) IN (", paste(sQuote(hucList), collapse = ", ", sep = "")," );")
+bkgd <- dbGetQuery(db, qry)
+tcrs <- dbGetQuery(db, paste0("SELECT proj4string p from lkpCRS where table_name = '", nm_bkgPts[2], "';"))$p
+samps <- st_sf(bkgd, geometry = st_as_sfc(bkgd$wkt, crs = tcrs))
+options(op)
+rm(op)
+
+# reduce the number of bkg points if huge
+# use the greater of 20 * pres points or 50,000
+bkgTarg <- max(nrow(ranPts.joined) * 20, 50000)
+if(nrow(samps) > bkgTarg){
+  samps <- samps[sample(nrow(samps), bkgTarg),]
+}
+
+# find coincident points ----
+polybuff <- st_transform(shp_expl, st_crs(samps))
+polybuff <- st_buffer(polybuff, dist = 30)
+
+coincidentPts <- unlist(st_contains(polybuff, samps, sparse = TRUE))
+
+# remove them (if any)
+if (length(coincidentPts) > 0) backgSubset <- samps[-coincidentPts,] else backgSubset <- samps
+
+#write it up and do join in sqlite (faster than downloading entire att set)
+st_geometry(backgSubset) <- NULL
+tmpTableName <- paste0(nm_bkgPts[2], "_", baseName)
+dbWriteTable(db, tmpTableName, backgSubset, overwrite = TRUE)
+
+# do the join, get all the data back down
+qry <- paste0("SELECT * from ", tmpTableName, " INNER JOIN ", nm_bkgPts[2], "_att on ",
+              tmpTableName,".fid = ", nm_bkgPts[2], "_att.fid;")
+bgSubsAtt <- dbGetQuery(db, qry)
+# delete the table on the db
+dbRemoveTable(db, tmpTableName)
+dbDisconnect(db)
+
+# # remove NAs #### convert this to removing columns instead?
+# bgSubsAtt$bulkDens <- as.numeric(bgSubsAtt$bulkDens)
+# bgSubsAtt$clay <- as.numeric(bgSubsAtt$clay) 
+# bgSubsAtt$soil_pH <- as.numeric(bgSubsAtt$soil_pH) 
+# bgSubsAtt$flowacc <- as.numeric(bgSubsAtt$flowacc) 
+# 
+# bgSubsAtt <- bgSubsAtt[complete.cases(bgSubsAtt),]
+# nrow(bgSubsAtt)
+
+dbName <- paste0(loc_model, "/", model_species, "/inputs/model_input/", baseName, "_att.sqlite")
+db <- dbConnect(SQLite(), dbName)
+dbWriteTable(db, paste0(nm_bkgPts[2], "_clean"), bgSubsAtt, overwrite = TRUE)
+
+dbDisconnect(db)
+
+rm(db, do, dt, qry, tmpTableName)

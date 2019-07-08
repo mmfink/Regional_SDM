@@ -16,6 +16,11 @@ load(paste0("rdata/",modelrun_meta_data$model_run_name,".Rdata"))
 #set an empty list
 cutList <- list()
 
+# total number of EOs (subtract absence class)
+totEOs <- length(unique(df.full$group_id)) - 1
+# total number of polys
+totPolys <- length(unique(df.full$stratum)) - 1
+
 #get minimum training presence
 allVotes <- data.frame(rf.full$y, rf.full$votes, df.full[,c("group_id", "stratum")])
 allVotesPresPts <- allVotes[allVotes$rf.full.y==1,]
@@ -47,13 +52,27 @@ capturedEOs <- length(unique(allVotesPresPts$group_id))
 capturedPts <- nrow(MTPGPts)
 cutList$MTPG <- list("value"=MTPG, "code"="MTPG", "capturedEOs"=capturedEOs, "capturedPts"=capturedPts)
 
+# get min of max values by EO (MTPEO; minimum training EO presence)
+maxInEachEO <- aggregate(allVotesPresPts$X1, 
+                           by=list(allVotesPresPts$group_id), max)
+names(maxInEachEO) <- c("group_id","X1")
+MTPEO <- min(maxInEachEO$X1)
+capturedEOs <- length(unique(maxInEachEO$group_id))
+capturedPolys <- length(unique(allVotesPresPts[allVotesPresPts$X1 >= MTPEO,"stratum"]))
+capturedPts <- nrow(allVotesPresPts[allVotesPresPts$X1 >= MTPEO,])
+cutList$MTPEO <- list("value" = MTPEO, "code" = "MTPEO", 
+                     "capturedEOs" = capturedEOs,
+                     "capturedPolys" = capturedPolys,
+                     "capturedPts" = capturedPts)
+
+
 # F-measure cutoff skewed towards capturing more presence points.
 # extract the precision-recall F-measure from training data
 # set alpha very low to tip in favor of 'presence' data over 'absence' data
 # based on quick assessment in Spring 07, set alpha to 0.01
 alph <- 0.01
 #create the prediction object for ROCR. Get pres col from votes (=named "1")
-rf.full.pred <- prediction(rf.full$votes[,"1"],df.full$pres)
+rf.full.pred <- prediction(rf.full$votes[,"1"]/numCores,df.full$pres)
 #use ROCR performance to get the f measure
 rf.full.f <- performance(rf.full.pred,"f",alpha = alph)
 #extract the data out of the S4 object, then find the cutoff that maximize the F-value.
@@ -155,6 +174,75 @@ if(length(dbcheck)==0){
 # clean up
 options(op)
 dbDisconnect(db)
+# 
+# ## create all thresholds grid
+# t2 <- sort(unique(allThresh$cutValue))
+# t2 <- t2[!is.na(t2)]
+# # get unique thresholds
+# t3 <- data.frame(cutCodes = unlist(lapply(t2, FUN = function(x) {paste(allThresh$cutCode[allThresh$cutValue == x], collapse = ";")})),
+#                  cutValue = t2,
+#                  order = 1:length(t2))
+# 
+# # load the prediction grid
+# ras <- raster(paste0("model_predictions/", model_run_name, ".tif"))
+# 
+# # reclassify the raster based on the threshold into binary 0/1
+# m <- cbind(
+#   from = c(-Inf, t3$cutValue),
+#   to = c(t3$cutValue, Inf),
+#   becomes = c(0, t3$order)
+# )
+# # reclassify (multi-core try)
+# if (all(c("snow","parallel") %in% installed.packages())) {
+#   try({
+#     cat("Using multi-core processing...\n")
+#     beginCluster(type = "SOCK")
+#     rasrc <- clusterR(ras, reclassify, args = list(rcl = m))
+#   })
+#   try(endCluster())
+#   if (!exists("rasrc")) {
+#     cat("Cluster processing failed. Falling back to single-core processing...\n")
+#     rasrc <- reclassify(ras, m)
+#   }
+# } else {
+#   rasrc <- reclassify(ras, m)
+# }
+# rasrc <- as.factor(rasrc)
+# levels(rasrc) <- merge(levels(rasrc), t3, by.x = "ID", by.y = "order", all.x = T)
+# 
+# outfile <- paste("model_predictions/",model_run_name,"_all_thresholds.tif", sep = "")
+# writeRaster(rasrc, filename=outfile, format="GTiff", overwrite=TRUE, datatype = "INT2U")
+# 
+# #clean up
+# rm(m, rasrc)
+# 
+# ## continuous grid that drops cells below lowest calculated thresh ----
+# # reclassify the raster based on the threshold into Na below thresh
+# m <- cbind(
+#   from = c(-Inf),
+#   to = min(t3$cutValue),
+#   becomes = c(NA)
+# )
+# 
+# # reclassify (multi-core try)
+# if (all(c("snow","parallel") %in% installed.packages())) {
+#   try({
+#     cat("Using multi-core processing...\n")
+#     beginCluster(type = "SOCK")
+#     rasrc <- clusterR(ras, reclassify, args = list(rcl = m))
+#   })
+#   try(endCluster())
+#   if (!exists("rasrc")) {
+#     cat("Cluster processing failed. Falling back to single-core processing...\n")
+#     rasrc <- reclassify(ras, m)
+#   }
+# } else {
+#   rasrc <- reclassify(ras, m)
+# }
+# 
+# #plot(rasrc)
+# outfile <- paste("model_predictions/",model_run_name,"_min_thresh_continuous.tif", sep = "")
+# writeRaster(rasrc, filename=outfile, format="GTiff", overwrite=TRUE)
 
 # write the thresholds to the line shapefile
 results_shape <- st_read(paste0("model_predictions/", modelrun_meta_data$model_run_name, "_results.shp"), quiet = T)

@@ -21,10 +21,14 @@ library(raster)
 library(here)
 library(RSQLite)
 library(rgdal)
-#library(reticulate)
+#library(reticulate) # for direct python calls (alternative to arcgisbinding)
 library(RSQLite)
 library(arcgisbinding)
 library(sf)
+library(stars)
+
+# arcgisbinding requirement ... 
+arc.check_product()
 
 # load in the data from the species run
 rm(list=ls())
@@ -43,14 +47,14 @@ packaged <- unique(unlist(sapply(grep("model_review_output",list.files(path=here
 not_yet_exported <- setdiff(finished,packaged)
 not_yet_exported
 ##If there are models in the list you do not want to export, remove them by adding their cutecodes to "exclude_these"
-exclude_these=c("alashete", "alasvari", "ellichip", "epioobli","fuscburk","hamiaust","lampcari","lasmalab","margmono","pleucoll") #Delete codes in this vector when they are ready to be packaged
+exclude_these=c("arbopomo") #Delete codes in this vector when they are ready to be packaged
 
 not_yet_exported <- not_yet_exported[!not_yet_exported %in% exclude_these]
 not_yet_exported ##These are the final set of models that will be packaged up
 length(not_yet_exported)
 
 ####For manual use- to run one at a time UNCOMMENT this line and add cutecode(s) of the species interested ####
-#not_yet_exported<-c("pseugorz")
+#not_yet_exported<-c("chrocumb")
 
 ###Final step sends the finals to the model_review_staging folder
 ##Assumes the model_review_staging folder is in the parent directory Lines 204 +206
@@ -89,7 +93,8 @@ for (j in 1:length(not_yet_exported)){
   } else if (modType=="T"){ # Terrestrial Option 
     # load the raster from the latest model run
     rasPath <- file.path(rootPath, "outputs","model_predictions",paste0(model_run_name,".tif"))
-    ras <- raster(rasPath) 
+    #ras <- raster(rasPath)
+    ras <- read_stars(rasPath) 
   } else {
     print("Model is not of the Terrestrial or Aquatic Type")
   }
@@ -164,11 +169,7 @@ for (j in 1:length(not_yet_exported)){
     print("Model is not of the Terrestrial or Aquatic Type")
   }
   
-  #writeOGR(obj=modelPoly, dsn=outpath, layer="modelPoly", driver="ESRI Shapefile")
-  #inShp <- paste0(outpath, "/modelPoly.shp")
-  
   # use bridge to write out file gdb
-  arc.check_product()
   # copy over a blank gdb as the bridge can't create them by itself. I would store this in some other directory
   templateGDB <- here("_data","other_spatial","feature","template_db_predictedhabitat-poly.gdb")
   templateFiles <- list.files(templateGDB)
@@ -221,8 +222,8 @@ for (j in 1:length(not_yet_exported)){
     dbpath <- here("_data","databases", "SDM_lookupAndTracking.sqlite")
     db <- dbConnect(SQLite(),dbname=dbpath)
     SQLquery <- paste0("SELECT huc10_id from lkpRange
-                       inner join lkpSpecies on lkpRange.EGT_ID = lkpSpecies.EGT_ID
-                       where lkpSpecies.sp_code = '", model_species, "';")
+                     inner join lkpSpecies on lkpRange.EGT_ID = lkpSpecies.EGT_ID
+                     where lkpSpecies.sp_code = '", model_species, "';")
     hucList <- dbGetQuery(db, statement = SQLquery)$huc10_id
     dbDisconnect(db)
     rm(db)
@@ -292,3 +293,4 @@ for (j in 1:length(not_yet_exported)){
 
   print (paste0("Export complete for ",j," of ",length(not_yet_exported)," : ",not_yet_exported[j]))
 }
+
